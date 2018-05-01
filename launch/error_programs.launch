@@ -1,0 +1,12 @@
+<!--
+    Author: Laura Petrich
+    Assistive Robotic Interface for One Camera
+-->
+
+<launch>
+    <node pkg="geometric_error" type="error_control" name="error_control" output="screen" launch-prefix="valgrind --leak-check=full -v --track-origins=yes --log-file=memcheck.out.error_control.%p">
+    </node> 
+    <!--
+    <node pkg="error_calculation" type="error_grouper.py" name="error_grouper" output="screen"/>
+    -->
+</launch>

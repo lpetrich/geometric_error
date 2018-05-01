@@ -1,0 +1,36 @@
+<!--
+    Author: Laura Petrich
+    Assistive Robotic Interface for Stereo Vision
+-->
+
+<launch>    
+
+    <group ns="cam1">
+        <node name="trackers" pkg="mtf_bridge" type="error_tracker_node" output="screen"> 
+            <param name="shm_name" value="shm1"/>
+            <remap from="/init_buffer" to="/cam1/init_buffer"/>
+            <remap from="/input_image" to="/cam1/input_image"/>
+        </node>
+        <node name="SharedImageWriter" pkg="mtf_bridge" type="SharedImageWriter" output="screen"> 
+            <param name="shm_name" value="shm1"/>
+            <remap from="/camera/image_raw" to="/cam1/image_raw"/>
+        </node>
+    </group> 
+
+    <group ns="cam2">
+        <node name="trackers" pkg="mtf_bridge" type="error_tracker_node" output="screen"> 
+            <param name="shm_name" value="shm2"/>
+            <remap from="/init_buffer" to="/cam2/init_buffer"/>
+            <remap from="/input_image" to="/cam2/input_image"/>
+        </node>
+        <node name="SharedImageWriter" pkg="mtf_bridge" type="SharedImageWriter" output="screen"> 
+            <param name="shm_name" value="shm2"/>
+            <remap from="/camera/image_raw" to="/cam2/image_raw"/>
+        </node>
+    </group> 
+<!--
+    <node pkg="rqt_geometric_constraints" type="rqt_geometric_constraints" name="geometric_constraints"/>  
+    <node pkg="geometric_error" type="error_control" name="error_control"/> 
+    <node pkg="error_calculation" type="error_grouper.py" name="error_grouper"/>
+-->
+</launch>

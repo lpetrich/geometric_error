@@ -23,7 +23,7 @@ bool CALCULATE, STEREO, TASKS_SET, RESET;
 int count1, count2;
 // coordinates from trackers [top_left, top_right, bot_right, bot_left, centroid, ... ]
 std::vector<int> task_ids;
-std::vector<int> trackers_cam1, trackers_cam2;
+std::vector<std::vector<int> > trackers_cam1, trackers_cam2;
 // to hold end effector position
 geometric_error::TrackPoint eef_pt;
 std_msgs::Bool reset;
@@ -50,67 +50,113 @@ class Error {
 
         bool get_error(int cam) {
         	geometric_error::ErrorInfo error_msg;
-        	int sz = 0;
+
 			if (cam == 2) {
-				while (trackers_cam2.size() == sz) { continue; }
+				while (trackers_cam2.size() == 0) { continue; }
 			} else {
-				while (trackers_cam1.size() == sz) { continue; }
+				while (trackers_cam1.size() == 0) { continue; }
 			}
 
-			int start = 0;
-			int skip;
+			int k = 0;
         	for (int i = 0; i < task_ids.size(); i++) {
-        		std::vector<int> task_coords;
-        		Eigen::VectorXd e;
+        		std::vector<std::vector<int> > task_coords;
+				Eigen::VectorXd e;
 				double err;
 				switch (task_ids[i]) {
 	                case 0:
-	        			skip = 4;
-	                    e = point_to_point(start, cam);
+	                	task_coords.resize(2);
+	                	for (int j = k; j < k + 2; j++) {
+	                		if (cam == 2){
+	                			task_coords.push_back(trackers_cam2[j]);
+	                		} else {
+	                			task_coords.push_back(trackers_cam1[j]);
+	                		}
+	                	}
+	                	// end effector posiion
+    					eef_pt.x = task_coords[1][0];
+						eef_pt.y = task_coords[1][1];
+	                    e = point_to_point(task_coords);
 	                    // add to error message, 2 dimensions -- x & y
             			error_msg.error.push_back(e(0));
 						error_msg.error.push_back(e(1));
 						error_msg.error_dim.push_back(2);
+	                    k += 2;
 	                    err = e.norm();
-	                    // start += skip;
 	                    break;
 	                case 1:
-	                	skip = 6;
-	                    err = point_to_line(start, cam);
+	                	task_coords.resize(3);
+	                	for (int j = k; j < k + 3; j++) {
+	                		if (cam == 2){
+	                			task_coords.push_back(trackers_cam2[j]);
+	                		} else {
+	                			task_coords.push_back(trackers_cam1[j]);
+	                			// for (int a = 0; a < trackers_cam1[j].size(); a++)
+	                			// 	std::cout << trackers_cam1[j][a] << " ";
+	                			// std::cout << "\n";
+	                		}
+	                	}
+    					eef_pt.x = task_coords[2][0];
+						eef_pt.y = task_coords[2][1];
+	                    err = point_to_line(task_coords);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
+	                    k += 3;                   
 	                    break;
 	                case 2:
-	                	skip = 8;                 
-						err = line_to_line(start, cam);
+	                	task_coords.resize(4);
+	                	for (int j = k; j < k + 4; j++) {
+	                		if (cam == 2){
+	                			task_coords.push_back(trackers_cam2[j]);
+	                		} else {
+	                			task_coords.push_back(trackers_cam1[j]);
+	                		}
+	                	}
+    					eef_pt.x = task_coords[2][0];
+						eef_pt.y = task_coords[2][1];	                    
+						err = line_to_line(task_coords);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
+	                    k += 4;
 	                    break;
 	                case 3:
-	                	skip = 8;                 
-	                    err = parallel_lines(start, cam);
+	                	task_coords.resize(4);
+   	                	for (int j = k; j < k + 4; j++) {
+	                		if (cam == 2){
+	                			task_coords.push_back(trackers_cam2[j]);
+	                		} else {
+	                			task_coords.push_back(trackers_cam1[j]);
+	                		}
+	                	}
+    					eef_pt.x = task_coords[2][0];
+						eef_pt.y = task_coords[2][1];	
+	                    err = parallel_lines(task_coords);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
+	                    k += 4;
 	                    break;
 	                case 4:
-	                	skip = 8;                 	
-	                    err = points_to_conic(start, cam);
+	                	task_coords.resize(8);
+   	                	for (int j = k; j < k + 8; j++) {
+	                		if (cam == 2){
+	                			task_coords.push_back(trackers_cam2[j]);
+	                		} else {
+	                			task_coords.push_back(trackers_cam1[j]);
+	                		}
+	                	}
+    					eef_pt.x = task_coords[5][0];
+						eef_pt.y = task_coords[5][1];	
+	                    err = points_to_conic(task_coords);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
+	                    k += 8;
 	                    break;
 	                case 5:
-	                	skip = 0;
-	                	err = point_to_plane(start, cam);
+	                	err = point_to_plane();
 	                    break;
 	                default:
-	                	skip = 0;
 	                    ROS_WARN_STREAM("INVALID TASK ID");
 	                    break;
 	            }
-                start += skip;                   
 	            if (fabs(err) > MAX) {
 	            	std::cout << fabs(err) << "\n";
 	            	ROS_WARN("LOST TRACKER, RESETTING EVERYTHING");
@@ -130,85 +176,50 @@ class Error {
 	        return true;
 	    }
 
-        Eigen::VectorXd point_to_point(int idx, int cam)
+        Eigen::VectorXd point_to_point(std::vector<std::vector<int> > coords)
 		{
 			Eigen::Vector2d robot(2);
 		  	Eigen::Vector2d target(2);
 		  	Eigen::Vector2d result(2);
-		  	if (cam == 2) {
-		  		target(0) = trackers_cam2[idx];
-	  			target(1) = trackers_cam2[idx + 1];
-			  	robot(0) = trackers_cam2[idx + 2];
-	  			robot(1) = trackers_cam2[idx + 3];
-		  	} else {
-  				target(0) = trackers_cam1[idx];
-	  			target(1) = trackers_cam1[idx + 1];
-			  	robot(0) = trackers_cam1[idx + 2];
-	  			robot(1) = trackers_cam1[idx + 3];
-	  		}
-			eef_pt.x = robot(0);
-			eef_pt.y = robot(1);  			
-			result =  target - robot;
+  			target(0) = coords[0][0];
+  			target(1) = coords[0][1];
+		  	robot(0) = coords[1][0];
+  			robot(1) = coords[1][1];
+  			result =  target - robot;
 		  	return result.cwiseAbs(); 
 		}
 
-        double point_to_line(int idx, int cam)
+        double point_to_line(std::vector<std::vector<int> > coords)
 		{
   			Eigen::Vector3d robot, p1, p2;
-		  	if (cam == 2) {
-		  		robot << trackers_cam2[idx], trackers_cam2[idx + 1], 1;
-		  		p1 << trackers_cam2[idx + 2], trackers_cam2[idx + 3], 1;
-		  		p2 << trackers_cam2[idx + 4], trackers_cam2[idx + 5], 1;
-		  	} else {
-		  		robot << trackers_cam1[idx], trackers_cam1[idx + 1], 1;
-		  		p1 << trackers_cam1[idx + 2], trackers_cam1[idx + 3], 1;
-		  		p2 << trackers_cam1[idx + 4], trackers_cam1[idx + 5], 1;
-	  		}
-			eef_pt.x = robot(0);
-			eef_pt.y = robot(1); 
+  			robot << coords[0][0], coords[0][1], 1;
+  			p1 << coords[1][0], coords[1][1], 1;
+  			p2 << coords[2][0], coords[2][1], 1;
   			double result;
   			result = p1.cross(p2).dot(robot);
 		  	return result; 
 		}
 
-        double line_to_line(int idx, int cam)
+        double line_to_line(std::vector<std::vector<int> > coords)
 		{
   			Eigen::Vector3d r1, r2, p1, p2;
-		  	if (cam == 2) {
-		  		p1 << trackers_cam2[idx], trackers_cam2[idx + 1], 1;
-		  		p2 << trackers_cam2[idx + 2], trackers_cam2[idx + 3], 1;
-		  		r1 << trackers_cam2[idx + 4], trackers_cam2[idx + 5], 1;
-		  		r2 << trackers_cam2[idx + 6], trackers_cam2[idx + 7], 1;
-		  	} else {
-		  		p1 << trackers_cam1[idx], trackers_cam1[idx + 1], 1;
-		  		p2 << trackers_cam1[idx + 2], trackers_cam1[idx + 3], 1;
-		  		r1 << trackers_cam1[idx + 4], trackers_cam1[idx + 5], 1;
-		  		r2 << trackers_cam1[idx + 6], trackers_cam1[idx + 7], 1;
-	  		}
-			eef_pt.x = r1(0);
-			eef_pt.y = r1(1); 
-  			Eigen::Vector3d line = r1.cross(r2);  
+  			r1 << coords[0][0], coords[0][1], 1;
+  			r2 << coords[1][0], coords[1][1], 1;
+  			p1 << coords[2][0], coords[2][1], 1;
+  			p2 << coords[3][0], coords[3][1], 1;
+  			Eigen::Vector3d line = p1.cross(p2);  
   			double result;
-  			result = line.dot(p1) + line.dot(p2); 
+  			result = line.dot(r1) + line.dot(r2); 
 		  	return result; 
 		}
 
-        double parallel_lines(int idx, int cam)
+        double parallel_lines(std::vector<std::vector<int> > coords)
 		{
   			Eigen::Vector3d r1, r2, p1, p2, l1, l2, intersection;
-		  	if (cam == 2) {
-		  		p1 << trackers_cam2[idx], trackers_cam2[idx + 1], 1;
-		  		p2 << trackers_cam2[idx + 2], trackers_cam2[idx + 3], 1;
-		  		r1 << trackers_cam2[idx + 4], trackers_cam2[idx + 5], 1;
-		  		r2 << trackers_cam2[idx + 6], trackers_cam2[idx + 7], 1;
-		  	} else {
-		  		p1 << trackers_cam1[idx], trackers_cam1[idx + 1], 1;
-		  		p2 << trackers_cam1[idx + 2], trackers_cam1[idx + 3], 1;
-		  		r1 << trackers_cam1[idx + 4], trackers_cam1[idx + 5], 1;
-		  		r2 << trackers_cam1[idx + 6], trackers_cam1[idx + 7], 1;
-	  		}
-			eef_pt.x = r1(0);
-			eef_pt.y = r1(1); 
+  			r1 << coords[0][0], coords[0][1], 1;
+  			r2 << coords[1][0], coords[1][1], 1;
+  			p1 << coords[2][0], coords[2][1], 1;
+  			p2 << coords[3][0], coords[3][1], 1;
   			double result;
   			l1 = r1.cross(r2);
   			l2 = p1.cross(p2);
@@ -217,7 +228,7 @@ class Error {
 		  	return result; 
 		}
 
-        double points_to_conic(int idx, int cam)
+        double points_to_conic(std::vector<std::vector<int> > coords)
 		{
 			// uses code from visp
 			// Eigen::MatrixXd A(points_.size() - 1, 5);
@@ -249,7 +260,7 @@ class Error {
 
 		}
 
-        double point_to_plane(int idx, int cam)
+        double point_to_plane()
 		{
   			Eigen::Vector3d p, p0, vec1, vec2, n, n_unit;
 
@@ -276,11 +287,9 @@ class Error {
 				pub_eef.publish(eef_msg);
 		    }
 		    // Publish the error.
-		    int cam = 1;
-			get_error(cam);
+			get_error(1);
 			if (STEREO) {
-				cam = 2;
-				get_error(cam);		  
+				get_error(2);		  
 			}
 		}
 
@@ -292,12 +301,12 @@ class Error {
 			CALCULATE = false;
 			TASKS_SET = false;
 			task_ids.clear();
-			// for (int i = 0; i < task_ids.size(); i++) {
-			// 	trackers_cam1[i].clear();
-			// 	if (STEREO) {
-			// 		trackers_cam2[i].clear();
-			// 	}
-			// }
+			for (int i = 0; i < task_ids.size(); i++) {
+				trackers_cam1[i].clear();
+				if (STEREO) {
+					trackers_cam2[i].clear();
+				}
+			}
 			trackers_cam1.clear(); 
 			trackers_cam2.clear();
 			count1 = 0;
@@ -326,74 +335,83 @@ class Callbacks {
         			count1++;
         			continue;
         		}
+        		count1 = 16;
         		trackers_cam1.clear();
         		std::string m = msg->data;
         		std::string s = ";";
+				int i = 0;
+				int j = 0;
+				double d = 0.0;
 				std::istringstream iss(m);
 				do {
+					std::vector<int> temp;
 					std::string subs;
 					iss >> subs;
-					int i;
 					i = iss.peek();
 					if (i != -1) {
+						// std::cout << subs << " subs\n";
 						if (subs != s){
-							int d;
-							d = std::atoi(subs.c_str());
-							trackers_cam1.push_back(d);
+							d = std::atof(subs.c_str());
+							temp.push_back(d);
+							j++;
+							if (j == 2) {
+								trackers_cam1.push_back(temp);
+								j = 0;
+							}
 						}
 					}
 				} while (iss);
 			}
         }
 
-  //       void handleTask1(const std::vector<int> v) {
-		// 	std::vector<int> p;
-		// 	for (int i = 0; i < v.size(); i++) {
-		// 		if (i % 2 == 0) {
-		// 			p.push_back(v[i]);
-		// 		} else {
-		// 			p.push_back(v[i]);
-		// 			trackers_cam1.push_back(p);
-		// 		}
-		// 	}
-		// }
+        void handleTask1(const std::vector<int> v) {
+			std::vector<int> p;
+			for (int i = 0; i < v.size(); i++) {
+				if (i % 2 == 0) {
+					p.push_back(v[i]);
+				} else {
+					p.push_back(v[i]);
+					trackers_cam1.push_back(p);
+				}
+			}
+		}
 
-  //       void handleTask2(const std::vector<int> v) {
-		// 	std::vector<int> p2;
-		// 	for (int i = 0; i < v.size(); i++) {
-		// 		if (i % 2 == 0) {
-		// 			p2.push_back(v[i]);
-		// 		} else {
-		// 			p2.push_back(v[i]);
-		// 			trackers_cam2.push_back(p2);
-		// 		}
-		// 	}
-		// }
+        void handleTask2(const std::vector<int> v) {
+			std::vector<int> p2;
+			for (int i = 0; i < v.size(); i++) {
+				if (i % 2 == 0) {
+					p2.push_back(v[i]);
+				} else {
+					p2.push_back(v[i]);
+					trackers_cam2.push_back(p2);
+				}
+			}
+		}
 
         void callback_trackers_cam2(const std_msgs::String::ConstPtr& msg) {
         	if (CALCULATE && TASKS_SET) {
-    //     		while (count1 <= 15) { continue; }
-    //     		trackers_cam2.clear();
-    //     		std::string m2 = msg->data;
-    //     		std::string s2 = ";";
-				// std::vector<int> temp2;
-				// int i2;
-				// double d2;
-				// std::istringstream iss2(m2);
-				// do {
-				// 	std::string subs2;
-				// 	iss2 >> subs2;
-				// 	i2 = iss2.peek();
-				// 	if (i2 != -1) {
-				// 		if (subs2 == s2){
-				// 			handleTask2(temp2);
-				// 			temp2.clear();
-				// 		} else {
-				// 			d2 = std::atof(subs2.c_str());
-				// 			temp2.push_back(d2);
-				// 		}
-				// 	}
-				// } while (iss2);
+        		while (count1 <= 15) { continue; }
+        		trackers_cam2.clear();
+        		std::string m2 = msg->data;
+        		std::string s2 = ";";
+				std::vector<int> temp2;
+				int i2;
+				double d2;
+				std::istringstream iss2(m2);
+				do {
+					std::string subs2;
+					iss2 >> subs2;
+					i2 = iss2.peek();
+					if (i2 != -1) {
+						if (subs2 == s2){
+							handleTask2(temp2);
+							temp2.clear();
+						} else {
+							d2 = std::atof(subs2.c_str());
+							temp2.push_back(d2);
+						}
+					}
+				} while (iss2);
 			}
         }
 
@@ -412,10 +430,10 @@ class Callbacks {
 					temp.push_back(ID);
 				}
 				task_ids = temp;
-				// trackers_cam1.resize(task_ids.size());
-				// if (STEREO) {
-				// 	trackers_cam2.resize(task_ids.size());
-				// }
+				trackers_cam1.resize(task_ids.size());
+				if (STEREO) {
+					trackers_cam2.resize(task_ids.size());
+				}
 				// for (int i = 0; i < task_ids.size(); i++)
 	   //  			std::cout << task_ids[i] << " ";
 	  	// 		std::cout << '\n';
