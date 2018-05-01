@@ -29,19 +29,17 @@ geometric_error::TrackPoint eef_pt;
 std_msgs::Bool reset;
 
 class Error {
-	ros::Publisher pub_reset;
-	ros::Publisher pub_eef;
 	ros::Publisher pub_err;
 	ros::Publisher pub_err2;
+	ros::Publisher pub_reset;
+	ros::Publisher pub_eef;
+
     public:
         Error(ros::NodeHandle n) {
-        	std::cout << "Initializing error calculation class and publishers.";
             pub_reset = n.advertise<std_msgs::Bool>("/error_reset", 10);
             pub_eef = n.advertise<geometric_error::TrackedPoints>("/eef_pos", 10);
             pub_err = n.advertise<geometric_error::ErrorInfo>("/cam1/ErrorInfo", 10);
-            if (STEREO) {
-            	pub_err2 = n.advertise<geometric_error::ErrorInfo>("/cam2/ErrorInfo", 10);
-            }
+            pub_err2 = n.advertise<geometric_error::ErrorInfo>("/cam2/ErrorInfo", 10);
         }
 
         ~Error() {
@@ -72,28 +70,26 @@ class Error {
 						error_msg.error.push_back(e(1));
 						error_msg.error_dim.push_back(2);
 	                    err = e.norm();
-	                    // start += skip;
 	                    break;
 	                case 1:
 	                	skip = 6;
 	                    err = point_to_line(start, cam);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
 	                    break;
 	                case 2:
 	                	skip = 8;                 
-						err = line_to_line(start, cam);
-	                    error_msg.error.push_back(err);
-						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
+						e = line_to_line(start, cam);
+            			error_msg.error.push_back(e(0));
+						error_msg.error.push_back(e(1));
+						error_msg.error_dim.push_back(2);
+	                    err = e.norm();	                    
 	                    break;
 	                case 3:
 	                	skip = 8;                 
 	                    err = parallel_lines(start, cam);
 	                    error_msg.error.push_back(err);
 						error_msg.error_dim.push_back(1);
-	                    // start += skip;                   
 	                    break;
 	                case 4:
 	                	skip = 8;                 	
@@ -107,25 +103,21 @@ class Error {
 	                    break;
 	                default:
 	                	skip = 0;
-	                    ROS_WARN_STREAM("INVALID TASK ID");
+	                    ROS_WARN_STREAM("Geometric Error: INVALID TASK ID");
 	                    break;
 	            }
                 start += skip;                   
 	            if (fabs(err) > MAX) {
 	            	std::cout << fabs(err) << "\n";
-	            	ROS_WARN("LOST TRACKER, RESETTING EVERYTHING");
+	            	ROS_WARN("Geometric Error: LOST TRACKER, RESETTING EVERYTHING");
 	            	if (reset_all(true)) { return true; }
 	            	else { return false; }
 	            } 
 	        }
             if (cam == 2) {
-			    if (pub_err2.getNumSubscribers() != 0) {
-					pub_err2.publish(error_msg);
-			    }
+				pub_err2.publish(error_msg);
             } else {
-			    if (pub_err.getNumSubscribers() != 0) {
-					pub_err.publish(error_msg);
-			    }
+				pub_err.publish(error_msg);
             }
 	        return true;
 	    }
@@ -171,9 +163,10 @@ class Error {
 		  	return result; 
 		}
 
-        double line_to_line(int idx, int cam)
+        Eigen::VectorXd line_to_line(int idx, int cam)
 		{
   			Eigen::Vector3d r1, r2, p1, p2;
+		  	Eigen::Vector2d result(2);
 		  	if (cam == 2) {
 		  		p1 << trackers_cam2[idx], trackers_cam2[idx + 1], 1;
 		  		p2 << trackers_cam2[idx + 2], trackers_cam2[idx + 3], 1;
@@ -188,8 +181,10 @@ class Error {
 			eef_pt.x = r1(0);
 			eef_pt.y = r1(1); 
   			Eigen::Vector3d line = r1.cross(r2);  
-  			double result;
-  			result = line.dot(p1) + line.dot(p2); 
+  			// double result;
+  			// change to 2 dimensional error
+  			result << line.dot(p1), line.dot(p2);
+  			// result = line.dot(p1) + line.dot(p2); 
 		  	return result; 
 		}
 
@@ -276,11 +271,9 @@ class Error {
 				pub_eef.publish(eef_msg);
 		    }
 		    // Publish the error.
-		    int cam = 1;
-			get_error(cam);
+			get_error(1);
 			if (STEREO) {
-				cam = 2;
-				get_error(cam);		  
+				get_error(2);		  
 			}
 		}
 
@@ -292,17 +285,12 @@ class Error {
 			CALCULATE = false;
 			TASKS_SET = false;
 			task_ids.clear();
-			// for (int i = 0; i < task_ids.size(); i++) {
-			// 	trackers_cam1[i].clear();
-			// 	if (STEREO) {
-			// 		trackers_cam2[i].clear();
-			// 	}
-			// }
 			trackers_cam1.clear(); 
 			trackers_cam2.clear();
 			count1 = 0;
 			count2 = 0;
 			usleep(2000);
+        	std::cout << "Geometric Error: Reset.\n";
 			return true;
 		}
 };
@@ -313,7 +301,6 @@ class Callbacks {
         Callbacks() {
             ros::NodeHandle n;
     		e = new Error(n);
-            std::cout << "Initializing subscribers.\n";
         }
 
         ~Callbacks() {
@@ -346,54 +333,25 @@ class Callbacks {
 			}
         }
 
-  //       void handleTask1(const std::vector<int> v) {
-		// 	std::vector<int> p;
-		// 	for (int i = 0; i < v.size(); i++) {
-		// 		if (i % 2 == 0) {
-		// 			p.push_back(v[i]);
-		// 		} else {
-		// 			p.push_back(v[i]);
-		// 			trackers_cam1.push_back(p);
-		// 		}
-		// 	}
-		// }
-
-  //       void handleTask2(const std::vector<int> v) {
-		// 	std::vector<int> p2;
-		// 	for (int i = 0; i < v.size(); i++) {
-		// 		if (i % 2 == 0) {
-		// 			p2.push_back(v[i]);
-		// 		} else {
-		// 			p2.push_back(v[i]);
-		// 			trackers_cam2.push_back(p2);
-		// 		}
-		// 	}
-		// }
-
         void callback_trackers_cam2(const std_msgs::String::ConstPtr& msg) {
         	if (CALCULATE && TASKS_SET) {
-    //     		while (count1 <= 15) { continue; }
-    //     		trackers_cam2.clear();
-    //     		std::string m2 = msg->data;
-    //     		std::string s2 = ";";
-				// std::vector<int> temp2;
-				// int i2;
-				// double d2;
-				// std::istringstream iss2(m2);
-				// do {
-				// 	std::string subs2;
-				// 	iss2 >> subs2;
-				// 	i2 = iss2.peek();
-				// 	if (i2 != -1) {
-				// 		if (subs2 == s2){
-				// 			handleTask2(temp2);
-				// 			temp2.clear();
-				// 		} else {
-				// 			d2 = std::atof(subs2.c_str());
-				// 			temp2.push_back(d2);
-				// 		}
-				// 	}
-				// } while (iss2);
+        		trackers_cam2.clear();
+        		std::string m = msg->data;
+        		std::string s = ";";
+				std::istringstream iss(m);
+				do {
+					std::string subs;
+					iss >> subs;
+					int i;
+					i = iss.peek();
+					if (i != -1) {
+						if (subs != s){
+							int d;
+							d = std::atoi(subs.c_str());
+							trackers_cam2.push_back(d);
+						}
+					}
+				} while (iss);
 			}
         }
 
@@ -412,23 +370,23 @@ class Callbacks {
 					temp.push_back(ID);
 				}
 				task_ids = temp;
-				// trackers_cam1.resize(task_ids.size());
-				// if (STEREO) {
-				// 	trackers_cam2.resize(task_ids.size());
-				// }
-				// for (int i = 0; i < task_ids.size(); i++)
-	   //  			std::cout << task_ids[i] << " ";
-	  	// 		std::cout << '\n';
 				count1 = 0;
 				count2 = 0;
 	  			TASKS_SET = true;
+	  			std::cout << "Geometric Error: Task ids set.\n";
 	        }
         }
 
         void callback_calculate(const std_msgs::UInt32::ConstPtr& msg) {
         	int c = msg->data;
-        	if (c == 1) { CALCULATE = true; }
-        	else { e->reset_all(false); }
+        	if (c == 1) { 
+        		CALCULATE = true; 
+        		std::cout << "Geometric Error: Calculating errors.\n";
+        	}
+        	else { 
+        		std::cout << "Geometric Error: Stop calculating.\n";
+        		e->reset_all(false); 
+        	}
         }
 
         void loop() {
@@ -460,6 +418,7 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "error_control");
     ros::NodeHandle n;
+    usleep(3000);
     ros::AsyncSpinner spinner(0);
     spinner.start();
     Callbacks c;
@@ -467,32 +426,33 @@ int main(int argc, char **argv)
 	STEREO = false;
 	CALCULATE = false;
 	TASKS_SET = false;
-	task_ids.clear();
-	trackers_cam1.clear(); 
-	trackers_cam2.clear();
 	count1 = 0;
-	count2 = 0;
 
-	ros::master::V_TopicInfo master_topics;
-	ros::master::V_TopicInfo::iterator it;
-	ros::master::getTopics(master_topics);
-	for (it = master_topics.begin(); it != master_topics.end(); it++) {
-		const ros::master::TopicInfo& info = *it;
-		std::string topic_name = info.name;
-		std::string prefix = "/cam2/camera";
-		if(topic_name.substr(0, prefix.size()) == prefix) {
+	ros::V_string nodes;
+	ros::master::getNodes(nodes);
+	for (int i = 0; i < nodes.size(); i++) {
+		std::string prefix = "/cam2";
+		if(nodes[i].substr(0, prefix.size()) == prefix) {
 			STEREO = true;
 		}
 	}
-	if (STEREO) {
-		std::cout << "Stereo vision activated.\n";
-	}
 
+	if (STEREO) {
+		std::cout << "Geometric Error: Two cameras found.\n";
+	} else {
+		std::cout << "Geometric Error: One camera found.\n";
+	}
+	std::cout << "Geometric Error: Subscribing to /task_ids\n";
+	std::cout << "Geometric Error: Subscribing to /calculate\n";
+	std::cout << "Geometric Error: Subscribing to /cam1/centers\n";
+	if (STEREO) {
+		std::cout << "Geometric Error: Subscribing to /cam2/centers\n";
+	}
+	std::cout << "Geometric Error: Node initialized.\n\n";
     ros::Subscriber sub_m = n.subscribe("/task_ids", 100, &Callbacks::callback_task_ids, &c);
     ros::Subscriber sub_c = n.subscribe("/calculate", 100, &Callbacks::callback_calculate, &c);
     ros::Subscriber sub_t1 = n.subscribe("/cam1/centers", 100, &Callbacks::callback_trackers_cam1, &c);
     ros::Subscriber sub_t2 = n.subscribe("/cam2/centers", 100, &Callbacks::callback_trackers_cam2, &c);
     c.loop();
-
     return 0;
 }

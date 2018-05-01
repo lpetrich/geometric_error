@@ -34,8 +34,6 @@ def normalize(errors, dim):
 	num_rows = dim
 	error_mat = np.matrix(np.zeros((num_rows, num_cols)))
 	norm_mat = np.matrix(np.zeros((num_rows, num_cols)))
-	# print "num cols: ", num_cols
-	# print "num rows: ", num_rows
 	if num_cols == 1:
 		return errors
 
@@ -55,9 +53,9 @@ def normalize(errors, dim):
 		norm_mat = np.multiply(50 * scale1, norm_mat);
 		
 		dist = np.absolute(norm_mat).sum() / num_cols;
-		'''print "Translation: " + str(trans)
-		print "Centroid: " + str(centroid)
-		print "Distance: " + str(dist) '''
+		# print "Translation: " + str(trans)
+		# print "Centroid: " + str(centroid)
+		# print "Distance: " + str(dist) 
 		n1 = True
 	
 	if num_rows == 2: 
@@ -82,9 +80,9 @@ def normalize(errors, dim):
 		
 		n2 = True
 		
-		'''print 'Translation: (' + str(trans_x) + ', ' + str(trans_y) + ')'
-		print 'Centroid: (' + str(centroid_x) + ', ' + str(centroid_y) + ')' 
-		print 'Distance: ' + str(dist) '''
+		# print 'Translation: (' + str(trans_x) + ', ' + str(trans_y) + ')'
+		# print 'Centroid: (' + str(centroid_x) + ', ' + str(centroid_y) + ')' 
+		# print 'Distance: ' + str(dist) 
 
 	return norm_mat.getA1().tolist()
 
@@ -114,7 +112,6 @@ def interface1_cb(msg):
 		global error2
 		global error2_dim
 		global cam_num
-		
 		if len(msg.error) == 0:
 				return
 				
@@ -140,10 +137,10 @@ def interface1_cb(msg):
 			# print "Before 2D: "
 			# print errors_2d
 			norm_error = normalize(errors_1d, 1) + normalize(errors_2d, 2)
-			# print "Norm Error: "
-			# print norm_error
 			# print 'Error: '
 			# print(error1 + error2)
+			# print "Normalized Error: "
+			# print norm_error
 			# error_pub.publish(error1 + error2)
 			error_pub.publish(norm_error)
 			error1 = []
@@ -160,7 +157,6 @@ def interface2_cb(msg):
 		global error2
 		global error2_dim
 		global cam_num
-		
 		if len(msg.error) == 0:
 				return
 		lock.acquire()
@@ -200,8 +196,6 @@ def interface2_cb(msg):
 if __name__ == "__main__":
 
 		lock = threading.Lock()
-
-		# Find out how many cameras we are using.    
 		rospy.init_node("error_grouper")
 
 		T = rospy.get_published_topics()
@@ -211,10 +205,12 @@ if __name__ == "__main__":
 		else:
 			cam_num = 1
 
+		print "Error Grouper: Subscribing to /cam1/ErrorInfo"
 		rospy.Subscriber("/cam1/ErrorInfo", ErrorInfo, interface1_cb)
 		if(cam_num == 2):
+			print "Error Grouper: Subscribing to /cam2/ErrorInfo"
 			rospy.Subscriber("/cam2/ErrorInfo", ErrorInfo, interface2_cb)
-		
+		print "Error Grouper: Publishing to /image_error"
 		error_pub = rospy.Publisher("image_error", Error, queue_size=1)
-
+		print "Error Grouper: Node initialized.\n"
 		rospy.spin()
